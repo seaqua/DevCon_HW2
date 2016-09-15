@@ -13,38 +13,113 @@ namespace HomeWork2
     class Face
     {
         IFaceServiceClient faceServiceClient = new FaceServiceClient("6df4db950c2243dc99d413d4de205f03");
+        string personGroupId = "group1";
+        string personName = "Idol";
+
 
         public async Task MainAsync(string[] args)
         {
-            string filePath = "img\\seq103.png";
 
-            FaceRectangle[] faceRects = await UploadAndDetectFaces(filePath);
-            if (faceRects != null)
-            {
-                System.Diagnostics.Debug.WriteLine(faceRects);
+            if (!await CreatePerson(personGroupId, personName)) { return; }
 
-            }
-            else
-            {
-                System.Diagnostics.Debug.WriteLine("Face is not detected.");
-            }
+            string filePath = @"img\seq103.png";
+            await IdentityPerson(filePath);
+
         }
 
-        private async Task<FaceRectangle[]> UploadAndDetectFaces(string imageFilePath)
+        private async Task<bool> CreatePerson(string personGroupId, string personName)
         {
             try
             {
-                using (Stream imageFileStream = File.OpenRead(imageFilePath))
+                //PersonGroup[] personGroups = await faceServiceClient.ListPersonGroupsAsync();
+                //if (personGroups != null && personGroups.Length > 0)
+                //{
+                //    var b = Array.Exists(personGroups, "red");
+                //    if (personGroups..Contains(personGroupId))
+                //}
+
+                PersonGroup personGroup = await faceServiceClient.GetPersonGroupAsync(personGroupId);
+                if (personGroup == null)
                 {
-                    var faces = await faceServiceClient.DetectAsync(imageFileStream);
-                    var faceRects = faces.Select(face => face.FaceRectangle);
-                    return faceRects.ToArray();
+                    // Create an empty person group
+                    await faceServiceClient.CreatePersonGroupAsync(personGroupId, "Group " + personGroupId);
+
+                }
+
+                // Define Idol
+                CreatePersonResult idol = await faceServiceClient.CreatePersonAsync(
+                                    // Id of the person group that the person belonged to
+                                    personGroupId,
+                                    // Name of the person
+                                    personName
+                                );
+                // Directory contains image files of Idol
+                string personImageDir = @"img\" + personName;
+
+                foreach (string imagePath in Directory.GetFiles(personImageDir, "*.png"))
+                {
+                    using (Stream s = File.OpenRead(imagePath))
+                    {
+                        // Detect faces in the image and add to Idol
+                        await faceServiceClient.AddPersonFaceAsync(
+                            personGroupId, idol.PersonId, s);
+                    }
+                }
+                //Train the person group
+                await faceServiceClient.TrainPersonGroupAsync(personGroupId);
+                TrainingStatus trainingStatus = null;
+                while (true)
+                {
+                    trainingStatus = await faceServiceClient.GetPersonGroupTrainingStatusAsync(personGroupId);
+
+                    if (!trainingStatus.Status.Equals("running"))
+                    {
+                        break;
+                    }
+
+                    await Task.Delay(1000);
+                }
+
+
+                return true;
+            }
+            catch (Exception e)
+            {
+                System.Diagnostics.Debug.WriteLine(e.Message);
+
+                return false;
+            }
+
+        }
+
+
+
+        private async Task IdentityPerson(string imageFile)
+        {
+            System.Diagnostics.Debug.WriteLine("File {0}", imageFile);
+            using (Stream s = File.OpenRead(imageFile))
+            {
+                var faces = await faceServiceClient.DetectAsync(s);
+                var faceIds = faces.Select(face => face.FaceId).ToArray();
+
+                var results = await faceServiceClient.IdentifyAsync(personGroupId, faceIds);
+                foreach (var identifyResult in results)
+                {
+                    System.Diagnostics.Debug.WriteLine("Result of face: {0}", identifyResult.FaceId);
+                    if (identifyResult.Candidates.Length == 0)
+                    {
+                        System.Diagnostics.Debug.WriteLine("No one identified");
+                    }
+                    else
+                    {
+                        // Get top 1 among all candidates returned
+                        var candidateId = identifyResult.Candidates[0].PersonId;
+                        var person = await faceServiceClient.GetPersonAsync(personGroupId, candidateId);
+                        System.Diagnostics.Debug.WriteLine("Identified as {0}", person.Name);
+                    }
                 }
             }
-            catch (Exception)
-            {
-                return new FaceRectangle[0];
-            }
+
         }
     }
 }

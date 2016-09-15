@@ -12,7 +12,7 @@ namespace HomeWork2
     class Program
     {
 
-
+        // https://www.microsoft.com/cognitive-services/en-us/face-api/documentation/face-api-how-to-topics/howtoidentifyfacesinimage
         static void Main(string[] args)
         {
             Face face = new Face();
